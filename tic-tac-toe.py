@@ -1,9 +1,12 @@
+# Встроенные библиотеки Python, а так же модули других файлов
 import logging, mytoken
 import datetime
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandler, ContextTypes
 from random import randint as rnd
 from IOData import save_static, load_static
+
+# Установленные извне библиотеки
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandler, ContextTypes
 from emoji import emojize as e
 
 
@@ -19,6 +22,7 @@ logging.basicConfig(filename='bot.log',
 logger = logging.getLogger(__name__)
  
 
+# Константы в пайтон объявляются в верхнем регистре. 
 
 TOKENEMP = e(":gift:", language="alias")
 
@@ -69,7 +73,7 @@ WINS_LINE = [(0, 1, 2), (3, 4, 5), (6, 7, 8), (0, 3, 6),
 
 """Cписок кортежей победных комбинаций по которым определяется победа
 
-    Формат - [(...), (...), (...), (...)]"""
+    Формат - [(0, 1, 2), (3, 4, 5), (6, 7, 8), (0, 3, 6)]"""
 
 
 
@@ -109,7 +113,7 @@ def check_status(id_user: int):
     """Функция для проверки статистики пользователя и текущего состояния его поля
 
     - В случае, если пользователь новый - ему дается пустое поле и нулевая статистика
-    - В случае, если пользователь уже играл - загружается его состояние поля и статистика"""
+    - В случае, если пользователь уже играл - загружается его статистика и пустое поле"""
  
     if id_user not in game_static_keys:
 
@@ -127,7 +131,7 @@ def check_status(id_user: int):
 
         else: 
             # Иначе присваивается нулевая статистика 
-            game_static[id_user] = STATISTICS_EMPTY
+            game_static[id_user] = STATISTICS_EMPTY.copy()
 
     # Отображение в терминале для контроля работы программы. На функционирование в телеграмм не влияет. 
     print(game_status) 
@@ -153,7 +157,7 @@ def builde_answer(id_user: int, strings: list):
     Возвращает: 
     - Список информации, которую необходимо подать игроку"""
 
-    # Статистику пользователя приводится к списку для удобной итерации по значениям
+    # Статистика пользователя приводится к списку для удобной итерации по значениям
     ans = list(ANSWER_SPLIT)
 
     # К значениям побед и поражений присваивается статистика пользователя по ключам win и lost соответственно. 
@@ -197,14 +201,41 @@ async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = update.message.from_user
 
     # logger сразу записывает информацию о том, что пользователь начал игру
-    logger.info(f"User {name.first_name} started the game.")
+    logger.info(f"User {name.first_name} started tic_tac_toe.")
 
     # Проверяется состояние текущего поля пользователя
     check_status(name.id)
 
+    # Заводятся глобальные переменные smart_bot и first_move, чтобы ими можно было воспользоваться в других функциях
+    global smart_bot
+
+    global first_move
+
+    # К данным переменным присваивается значение, которое возвращается из функции issmartbot() и first_move() соответственно
+    smart_bot = issmartbot()
+
+    first_move = first_move()
+
+    # Заводятся 2 переменные - пустые строки, для вложения в них результата работы функций. 
+    smart = ""
+
+    move = ""
+
+    # В зависимости от результата, выданного функцией на основании рандома, пустая строка будет изменена
+    if first_move == True:
+        move = f'Первый ход за тобой, {name.first_name} {e(":snowman:", language="alias")}'
+    else:
+        move = f'Первый ход за ботом! {e(":globe_with_meridians:", language="alias")}' 
+    
+
+    if smart_bot == True:
+        smart = "Ты будешь играть с умным ботом!"
+    else:
+        smart = "Ты будешь играть с глупым ботом!"
+    
     # Показывается табло с информацией для пользователя на основании его ID и аргумента strings. 
     answer = builde_answer(
-        name.id, strings=[f'Привет {name.first_name}', f'Ваш ход  {e(":snowman:", language="alias")}'])
+        name.id, strings=[f'Привет {name.first_name}', move, smart, "Приятной игры!!!"])
 
     # Выводится табло с информацией, и само поле, которое выстраивается на основании информации,
     # полученной от id пользователя и статуса его текущего поля
@@ -236,8 +267,8 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # В случае, если пользователь сходил правильно (на пустую ячейку поля)    
     else:
 
-        # Ход переходит к боту, аргументами передаются уже нажатые кнопки, и то, какой бот будет играть против пользователя
-        result, answer = game_round(query, issmartbot)
+        # Ход переходит к боту, аргументом передаются уже нажатые кнопки
+        result, answer = game_round(query)
 
         # Если бот сходил 5 раз
         if result == 5:
@@ -251,17 +282,17 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Игра прекращается победой пользователя или бота, выдается поле заполненное символами соперников
             await query.edit_message_text(answer, reply_markup=InlineKeyboardMarkup(great_field(game_status[query.from_user.id])))
 
-            # статус поля сбрасывается (создается новое пустое поле)
-            game_status[query.from_user.id] = list(FIELD_EMPTY)
+            # статус поля сбрасывается (создается новое пустое поле) 
+            game_status[query.from_user.id] = list(FIELD_EMPTY).copy()
 
             # Создается запись об окончании игры в параметр "lastgame", указывающий на последнюю игру пользователя
             game_static[query.from_user.id]['lastgame'] = datetime.datetime.today().strftime("%d-%b-%Y (%H:%M:%S.%f)")
             
 
 
-def game_round(data, issmartbot):
-    """Функция определения победителя сеанса и изменяющая статистику пользователя"""
-
+def game_round(data):
+    """Функция ходов по полю, определения победителя, присваивания статистики за результат"""
+    
     # Ход пользователя меняет текущее состояние поля, на котором появляется символ пользователя
     game_status[data.from_user.id][int(data.data)] = TOKENPLAYER   
 
@@ -274,7 +305,7 @@ def game_round(data, issmartbot):
         # В табло поступит информация о победе пользователя
         return 1, builde_answer(data.from_user.id, strings=[
             f'Ты победил {data.from_user.first_name}',
-             'Молодец \N{VICTORY HAND}'])
+            'Молодец \N{VICTORY HAND}'])
 
     # В случае, если победная комбинация не обнаружена - произойдет проверка на "Ничью"
     elif check_draw (game_status[data.from_user.id]):
@@ -291,42 +322,33 @@ def game_round(data, issmartbot):
     # В случае, если ход пользователя не определяет ни победу, ни ничью        
     else:
 
-        # Если переменная issmartbot на основании рандома имеет значение True
-        if issmartbot == True:
+        # Если переменная issmartbot на основании рандома имеет значение True (это глобальная переменная, полученная при старте)
+        if smart_bot == True:
 
             # Происходит ход умного бота, анализирующего ситуацию и двигающегося по определенной стратегии для победы
             game_status[data.from_user.id][bot_ai(game_status[data.from_user.id])] = TOKENBOT
-
-            # Происходит проверка на победу бота        
-            if checkwin(game_status[data.from_user.id], TOKENBOT):
-
-                # В случае получения True в статистику пользователя добавляется + 1 к поражениям            
-                game_static[data.from_user.id]['lost'] += 1
-
-                # В табло поступает информация о поражении пользователя с утешением. 
-                return -1, builde_answer(data.from_user.id, strings=[
-                    f'Ты проиграл {e(":worried:", language="alias")}', f'Попробуй еще! У тебя обязательно получится {e(":sparkling_heart:", language="alias")}'])
-
-        # Если же переменная issmartbot на основании рандома имеет значение False            
-        elif issmartbot == False:
+            
+        # Если переменная issmartbot на основании рандома имеет значение False
+        elif smart_bot == False:
 
             # Происходит ход глупого бота, действующего на основании рандома без определенной стратегии
-            game_status[data.from_user.id][bot_move(game_status[data.from_user.id])] = TOKENBOT  
+            game_status[data.from_user.id][bot_move(game_status[data.from_user.id])] = TOKENBOT
 
-            # Происходит проверка на победу бота      
-            if checkwin(game_status[data.from_user.id], TOKENBOT):   
+        # Происходит проверка на победу бота        
+        if checkwin(game_status[data.from_user.id], TOKENBOT):
 
-                # В случае получения True в статистику пользователя добавляется + 1 к поражениям         
-                game_static[data.from_user.id]['lost'] += 1
+            # В случае получения True в статистику пользователя добавляется + 1 к поражениям            
+            game_static[data.from_user.id]['lost'] += 1
 
-                # В табло поступает информация о поражении пользователя с утешением.
-                return -1, builde_answer(data.from_user.id, strings=[
-                    f'Ты проиграл {e(":worried:", language="alias")}', f'Попробуй еще! У тебя обязательно получится {e(":sparkling_heart:", language="alias")}'])  
+            # В табло поступает информация о поражении пользователя с утешением. 
+            return -1, builde_answer(data.from_user.id, strings=[
+                f'Ты проиграл {e(":worried:", language="alias")}', 
+                f'Попробуй еще! У тебя обязательно получится {e(":sparkling_heart:", language="alias")}'])
                     
-    # После хода в табло поступает информация о том, что теперь ход пользователя, с побуждением подумать.                           
+        # После хода в табло поступает информация о том, что теперь ход пользователя, с побуждением подумать.                           
     return 5, builde_answer(data.from_user.id, strings=[
-        f'Подумайте хорошенько! {data.from_user.first_name}', f'Ваш ход {e(":snowman:", language="alias")}'])
-    
+        f'Подумайте хорошенько! {data.from_user.first_name}', f'Твой ход {e(":snowman:", language="alias")}'])
+
 
 
 def bot_move(board:list):
@@ -512,17 +534,34 @@ def checkwin(board: list, mark: str):
 
 
 
-# Переменная toss (бросок) определяет рандомное число от 0 до 100
-toss = rnd(0, 101)
-print(toss) # для проверки того, какой бот будет включен
-
-
-issmartbot = False if toss > 65 else True
-
-"""На основании рандома определяется то, как именно будет ходить бот
+def issmartbot():
+    """На основании рандома определяется то, как именно будет ходить бот
     - Если возвращается False - бот будет ходить рандомно, невзирая на стратегию
     - Если возвращается True - бот будет ходить на основании анализа поведения пользователя и лучшего возможного хода
     с точки зрения стратегии для неминуемой победы над пользователем. Такой бот не способен проиграть."""
+
+    # Переменная toss (бросок) определяет рандомное число от 0 до 100
+    toss_smart = rnd(0, 101)
+
+    print(f'Бот = {toss_smart}') # для проверки того, какой бот будет включен в терминале
+
+    # Возвращается булево значение соответствующее рандомному значению (шансы 50 на 50 для каждого из вариантов бота)
+    return False if toss_smart > 50 else True
+
+
+
+def first_move():
+    """На основании рандома определяется то, кто будет ходить первым
+    - Если возвращается False - бот будет ходить первым
+    - Если возвращается True - пользователь будет ходить первым """
+
+    # Переменная toss (бросок) определяет рандомное число от 0 до 100
+    toss_move = rnd(0, 101)
+
+    print(f'Первый ход = {toss_move}') # для проверки того, кто будет ходить первым в терминале
+
+    # Возвращается булево значение соответствующее рандомному значению (шансы 50 на 50 для бота и для пользователя)
+    return False if toss_move > 50 else True
 
 
 
