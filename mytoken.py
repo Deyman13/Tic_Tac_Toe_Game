@@ -1,1 +1,1 @@
-MYTOKEN = "Вставь свой, не надо тут подсматривать!!!"
+MYTOKEN = "5800339849:AAEn-O4sUk4J_feARNGzuU0RmgeJ03JUyRg"
