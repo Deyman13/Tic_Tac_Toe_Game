@@ -6,7 +6,7 @@ from IOData import save_static, load_static
 
 # Установленные извне библиотеки
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandler, ContextTypes, ConversationHandler
 from emoji import emojize as e
 
 
@@ -82,6 +82,9 @@ VALID = "012345678"
 """Cтрока валидных значений для проверки незаполненных ячеек
 
     Формат: '012345678'"""
+
+
+START_ROUTES, END_ROUTES = range(2)
 
 
 
@@ -206,41 +209,67 @@ async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Проверяется состояние текущего поля пользователя
     check_status(name.id)
 
-    # Заводятся глобальные переменные smart_bot и first_move, чтобы ими можно было воспользоваться в других функциях
     global smart_bot
 
-    global first_move
-
-    # К данным переменным присваивается значение, которое возвращается из функции issmartbot() и first_move() соответственно
     smart_bot = issmartbot()
-
-    first_move = first_move()
-
-    # Заводятся 2 переменные - пустые строки, для вложения в них результата работы функций. 
+ 
     smart = ""
 
-    move = ""
 
-    # В зависимости от результата, выданного функцией на основании рандома, пустая строка будет изменена
-    if first_move == True:
-        move = f'Первый ход за тобой, {name.first_name} {e(":snowman:", language="alias")}'
-    else:
-        move = f'Первый ход за ботом! {e(":globe_with_meridians:", language="alias")}' 
-    
+    if not first_move():
+        game_status[name.id][bot_move(game_status[name.id])] = TOKENBOT
 
-    if smart_bot == True:
+    if smart_bot:
         smart = "Ты будешь играть с умным ботом!"
     else:
         smart = "Ты будешь играть с глупым ботом!"
     
     # Показывается табло с информацией для пользователя на основании его ID и аргумента strings. 
     answer = builde_answer(
-        name.id, strings=[f'Привет {name.first_name}', move, smart, "Приятной игры!!!"])
+        name.id, strings=[f'Привет {name.first_name}', smart, "Приятной игры!!!"])
 
     # Выводится табло с информацией, и само поле, которое выстраивается на основании информации,
     # полученной от id пользователя и статуса его текущего поля
     await update.message.reply_text(answer, reply_markup=InlineKeyboardMarkup(great_field(game_status[name.id])))
+    return START_ROUTES
+
+
+
+async def start_new_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Функция старта новой игры с запросами"""
+
+    # В отличии от предыдущего варианта функции, тут работа идет с запросами
+    query = update.callback_query
+
+    # logger сразу записывает информацию о том, что пользователь начал игру
+    logger.info(f"User {query.from_user.first_name} started new tic_tac_toe.")
+
+    # Проверяется состояние текущего поля пользователя
+    check_status(query.from_user.id)
+
+    global smart_bot
+
+    smart_bot = issmartbot()
+ 
+    smart = ""
+
+    if not first_move():
+        game_status[query.from_user.id][bot_move(game_status[query.from_user.id])] = TOKENBOT
+
+    if smart_bot:
+        smart = "Ты будешь играть с умным ботом!"
+    else:
+        smart = "Ты будешь играть с глупым ботом!"
     
+    # Показывается табло с информацией для пользователя на основании его ID и аргумента strings. 
+    answer = builde_answer(
+        query.from_user.id, strings=[f'Привет {query.from_user.first_name}', smart, "Приятной игры!!!"])
+
+    # Выводится табло с информацией, и само поле, которое выстраивается на основании информации,
+    # полученной от id пользователя и статуса его текущего поля
+    await query.edit_message_text(answer, reply_markup=InlineKeyboardMarkup(great_field(game_status[query.from_user.id])))
+    return START_ROUTES
+
 
 
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -267,32 +296,43 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # В случае, если пользователь сходил правильно (на пустую ячейку поля)    
     else:
 
-        # Ход переходит к боту, аргументом передаются уже нажатые кнопки
         result, answer = game_round(query)
 
-        # Если бот сходил 5 раз
         if result == 5:
-
-            # Игра прекращается, так как пустых ячеек больше нет, и выдается поле заполненное символами соперников            
+            
             await query.edit_message_text(answer, reply_markup=InlineKeyboardMarkup(great_field(game_status[query.from_user.id])))
+            return START_ROUTES
 
-        # В случае, если еще остались пустые ячейки поля и обнаружилась победная комбинация   
         else:
 
-            # Игра прекращается победой пользователя или бота, выдается поле заполненное символами соперников
-            await query.edit_message_text(answer, reply_markup=InlineKeyboardMarkup(great_field(game_status[query.from_user.id])))
+            reply_markup = great_field(game_status[query.from_user.id])
+            reply_markup.append(
+                [
+                    InlineKeyboardButton("Хочу еще разок!", callback_data="Yes"),
+                    InlineKeyboardButton("Хочу закончить игру!", callback_data="No"),
+                ])
+            await query.edit_message_text(answer, reply_markup=InlineKeyboardMarkup(reply_markup))
 
             # статус поля сбрасывается (создается новое пустое поле) 
             game_status[query.from_user.id] = list(FIELD_EMPTY).copy()
 
             # Создается запись об окончании игры в параметр "lastgame", указывающий на последнюю игру пользователя
             game_static[query.from_user.id]['lastgame'] = datetime.datetime.today().strftime("%d-%b-%Y (%H:%M:%S.%f)")
-            
+            return END_ROUTES
+
+
+
+async def end(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()    
+    await query.edit_message_text(text="Спасибо за игру.\nУдачи тебе!")
+    return ConversationHandler.END
+
 
 
 def game_round(data):
     """Функция ходов по полю, определения победителя, присваивания статистики за результат"""
-    
+
     # Ход пользователя меняет текущее состояние поля, на котором появляется символ пользователя
     game_status[data.from_user.id][int(data.data)] = TOKENPLAYER   
 
@@ -323,13 +363,13 @@ def game_round(data):
     else:
 
         # Если переменная issmartbot на основании рандома имеет значение True (это глобальная переменная, полученная при старте)
-        if smart_bot == True:
+        if smart_bot:
 
             # Происходит ход умного бота, анализирующего ситуацию и двигающегося по определенной стратегии для победы
             game_status[data.from_user.id][bot_ai(game_status[data.from_user.id])] = TOKENBOT
             
         # Если переменная issmartbot на основании рандома имеет значение False
-        elif smart_bot == False:
+        elif not smart_bot:
 
             # Происходит ход глупого бота, действующего на основании рандома без определенной стратегии
             game_status[data.from_user.id][bot_move(game_status[data.from_user.id])] = TOKENBOT
@@ -344,7 +384,16 @@ def game_round(data):
             return -1, builde_answer(data.from_user.id, strings=[
                 f'Ты проиграл {e(":worried:", language="alias")}', 
                 f'Попробуй еще! У тебя обязательно получится {e(":sparkling_heart:", language="alias")}'])
-                    
+
+        elif check_draw (game_status[data.from_user.id]):
+
+            game_static[data.from_user.id]['win'] += 0.5
+
+            game_static[data.from_user.id]['lost'] += 0.5 
+
+            return 0, builde_answer(data.from_user.id, strings=[
+            f"Победила дружба!!! {e(':couple:', language='alias')}"])
+              
         # После хода в табло поступает информация о том, что теперь ход пользователя, с побуждением подумать.                           
     return 5, builde_answer(data.from_user.id, strings=[
         f'Подумайте хорошенько! {data.from_user.first_name}', f'Твой ход {e(":snowman:", language="alias")}'])
@@ -566,9 +615,22 @@ def first_move():
 
 
 if __name__ == '__main__':
+    
     app = ApplicationBuilder().token(mytoken.MYTOKEN).build()
-    app.add_handler(CommandHandler('start', start_game))    
-    app.add_handler(CommandHandler('help', help_command))
-    app.add_handler(CallbackQueryHandler(buttons))
+    conv_handler = ConversationHandler(
+        
+        entry_points=[CommandHandler("start", start_game)],
+        states={
+            START_ROUTES: [
+                CallbackQueryHandler(buttons, pattern="[0-8]"),                
+            ],
+            END_ROUTES: [
+                CallbackQueryHandler(start_new_game, pattern="^" + "Yes" + "$"),
+                CallbackQueryHandler(end, pattern="^" + "No" + "$"),
+            ],
+        },
+        fallbacks=[CommandHandler("start", start_game)],
+    )
+    app.add_handler(conv_handler)
     app.run_polling()
     save_static(game_static)
