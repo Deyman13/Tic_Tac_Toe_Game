@@ -63,7 +63,6 @@ def tg(float_):
 def tan(float_):
     return math.tan(float_)
 
-
 def ln(float_):
     return math.log(float_)
 
@@ -82,3 +81,4 @@ def exp(float_):
 def start_calculator(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = update.message.from_user
     logger.info(f"User {name.first_name} started calculator.")
+
