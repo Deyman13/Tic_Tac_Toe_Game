@@ -1,4 +1,4 @@
-# Встроенные библиотеки Python, а так же модули других файлов
+# Встроенные библиотеки Python, а так же функции и переменные других файлов
 import logging, mytoken
 import datetime
 from random import randint as rnd
@@ -22,7 +22,7 @@ logging.basicConfig(filename='bot.log',
 logger = logging.getLogger(__name__)
  
 
-# Константы в пайтон объявляются в верхнем регистре. 
+# Константы в пайтон объявляются в верхнем регистре и все же остаются изменяемыми. 
 
 TOKENEMP = e(":gift:", language="alias")
 
@@ -84,7 +84,12 @@ VALID = "012345678"
     Формат: '012345678'"""
 
 
+
 START_ROUTES, END_ROUTES = range(2)
+
+"""Команда необходимая для ConversationHandler, прерывать и продолжать работу программы. 
+    - START_ROUTES - продолжение работы программы
+    - END_ROUTES - конец работы программы, после этого, нажать на какие либо кнопки не удастся.  """
 
 
 
@@ -133,6 +138,7 @@ def check_status(id_user: int):
             game_static[id_user] = data[str(id_user)]
 
         else: 
+            
             # Иначе присваивается нулевая статистика 
             game_static[id_user] = STATISTICS_EMPTY.copy()
 
@@ -209,28 +215,38 @@ async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Проверяется состояние текущего поля пользователя
     check_status(name.id)
 
+    # Создается глобальная переменная smart_bot для возможности использования в других функциях
     global smart_bot
 
+    # Присваивается значение, согласно ответу функции issmartbot() к глобальной переменной smart_bot
     smart_bot = issmartbot()
- 
+    
+    # Условная пустая строка, открытая к изменениям
     smart = ""
 
-
+    # Если функция first_move() вернет значение True по результатам жеребьевки
     if not first_move():
+
+        # то бот сделает свой первый ход, в данном случае используется bot_move, для рандомного хода по полю 
         game_status[name.id][bot_move(game_status[name.id])] = TOKENBOT
 
+    # В зависимости от значения, привязанного к переменной smart_bot ранее, пустая строка будет заменена на определенную запись
     if smart_bot:
-        smart = "Ты будешь играть с умным ботом!"
+
+        smart = "Активирован умный бот!"
+
     else:
-        smart = "Ты будешь играть с глупым ботом!"
+
+        smart = "Активирован рандом-бот!"
     
     # Показывается табло с информацией для пользователя на основании его ID и аргумента strings. 
-    answer = builde_answer(
-        name.id, strings=[f'Привет {name.first_name}', smart, "Приятной игры!!!"])
+    answer = builde_answer(name.id, strings=[f'Привет {name.first_name}', smart, "Приятной игры!!!"])
 
     # Выводится табло с информацией, и само поле, которое выстраивается на основании информации,
     # полученной от id пользователя и статуса его текущего поля
     await update.message.reply_text(answer, reply_markup=InlineKeyboardMarkup(great_field(game_status[name.id])))
+
+    # Возвращаем флаг продолжения работы
     return START_ROUTES
 
 
@@ -238,13 +254,12 @@ async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start_new_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Функция старта новой игры с запросами"""
 
-    # В отличии от предыдущего варианта функции, тут работа идет с запросами
+    # В отличии от предыдущего варианта функции, тут работа идет с запросами. Все name заменены на query.from_user
+    # В остальном же функция полностью повторяет свой оригинал и соответствует ему
     query = update.callback_query
 
-    # logger сразу записывает информацию о том, что пользователь начал игру
     logger.info(f"User {query.from_user.first_name} started new tic_tac_toe.")
 
-    # Проверяется состояние текущего поля пользователя
     check_status(query.from_user.id)
 
     global smart_bot
@@ -254,20 +269,22 @@ async def start_new_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     smart = ""
 
     if not first_move():
+
         game_status[query.from_user.id][bot_move(game_status[query.from_user.id])] = TOKENBOT
 
     if smart_bot:
+
         smart = "Ты будешь играть с умным ботом!"
+
     else:
+
         smart = "Ты будешь играть с глупым ботом!"
-    
-    # Показывается табло с информацией для пользователя на основании его ID и аргумента strings. 
+     
     answer = builde_answer(
         query.from_user.id, strings=[f'Привет {query.from_user.first_name}', smart, "Приятной игры!!!"])
 
-    # Выводится табло с информацией, и само поле, которое выстраивается на основании информации,
-    # полученной от id пользователя и статуса его текущего поля
     await query.edit_message_text(answer, reply_markup=InlineKeyboardMarkup(great_field(game_status[query.from_user.id])))
+
     return START_ROUTES
 
 
@@ -296,21 +313,32 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # В случае, если пользователь сходил правильно (на пустую ячейку поля)    
     else:
 
+        # Проверяется результат при помощи game_round, аргументом передаем нажатую клавишу
         result, answer = game_round(query)
 
+        # Если возвращается не победа и не ничья
         if result == 5:
             
+            # Показываем клавиатуру для дальнейших шагов
             await query.edit_message_text(answer, reply_markup=InlineKeyboardMarkup(great_field(game_status[query.from_user.id])))
+
+            # Возвращаем флаг продолжения игры
             return START_ROUTES
 
+        # В случае, если ход определял победу или ничью
         else:
 
+            # Создается переменная reply_markup с той клавиатурой, которая была ранее во время игры
             reply_markup = great_field(game_status[query.from_user.id])
+
+            # И добавляются две новые кнопки, с вопросом "продолжить ли игру или закончить"
             reply_markup.append(
                 [
                     InlineKeyboardButton("Хочу еще разок!", callback_data="Yes"),
                     InlineKeyboardButton("Хочу закончить игру!", callback_data="No"),
                 ])
+            
+            # Пользователю отправляется эта клавиатура 
             await query.edit_message_text(answer, reply_markup=InlineKeyboardMarkup(reply_markup))
 
             # статус поля сбрасывается (создается новое пустое поле) 
@@ -318,20 +346,30 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # Создается запись об окончании игры в параметр "lastgame", указывающий на последнюю игру пользователя
             game_static[query.from_user.id]['lastgame'] = datetime.datetime.today().strftime("%d-%b-%Y (%H:%M:%S.%f)")
+
+            # Возвращается флаг окончания игры
             return END_ROUTES
 
 
 
 async def end(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+
+    # Переменная query отвечает за нажатую клавишу
     query = update.callback_query
+
+    # Клавиша нажата, ответ предоставляется
     await query.answer()    
+
+    # Отправляем ответ на нажатую клавишу
     await query.edit_message_text(text="Спасибо за игру.\nУдачи тебе!")
+
+    # Закрываем доступ к нажатию клавиш
     return ConversationHandler.END
 
 
 
 def game_round(data):
-    """Функция ходов по полю, определения победителя, присваивания статистики за результат"""
+    """Функция определения победителя, присваивания статистики за результат"""
 
     # Ход пользователя меняет текущее состояние поля, на котором появляется символ пользователя
     game_status[data.from_user.id][int(data.data)] = TOKENPLAYER   
@@ -385,6 +423,7 @@ def game_round(data):
                 f'Ты проиграл {e(":worried:", language="alias")}', 
                 f'Попробуй еще! У тебя обязательно получится {e(":sparkling_heart:", language="alias")}'])
 
+        # Проверка на ничью аналогично проверке человека. Данное условие необходимо, так как первый ход может быть за ботом. 
         elif check_draw (game_status[data.from_user.id]):
 
             game_static[data.from_user.id]['win'] += 0.5
@@ -394,7 +433,7 @@ def game_round(data):
             return 0, builde_answer(data.from_user.id, strings=[
             f"Победила дружба!!! {e(':couple:', language='alias')}"])
               
-        # После хода в табло поступает информация о том, что теперь ход пользователя, с побуждением подумать.                           
+    # После хода в табло поступает информация о том, что теперь ход пользователя, с побуждением подумать.                           
     return 5, builde_answer(data.from_user.id, strings=[
         f'Подумайте хорошенько! {data.from_user.first_name}', f'Твой ход {e(":snowman:", language="alias")}'])
 
@@ -616,21 +655,46 @@ def first_move():
 
 if __name__ == '__main__':
     
+    # Используйте свой токен в скобках после .token("00339849:AAEn-O4sUk4J_feARN") или создайте файл, где будете хранить MYTOKEN
+    # Нужно лишь для того, чтобы можно было добавить в .gitignore данный файл с токеном, дабы его не могли украсть у вас. 
     app = ApplicationBuilder().token(mytoken.MYTOKEN).build()
+
+    # ConversationHandler отвечает за то, чтобы была возможность прекратить сеанс игры и не дать возможности нажимать другие кнопки. 
     conv_handler = ConversationHandler(
         
+        # Начало - это старт игры
         entry_points=[CommandHandler("start", start_game)],
+
+        # Всего 2 команды - начало и конец.
         states={
+
+            # В начало передается функция buttons, паттерном передается список от 0 до 8
+            # Т.е там, где в коде возвращается флаг продолжения игры START_ROUTES на самом деле происходит переход к buttons
+            # Хендлер при получении такой команды запускает функцию. 
             START_ROUTES: [
                 CallbackQueryHandler(buttons, pattern="[0-8]"),                
             ],
+
+            # В конце есть 2 пути. 1 - старт новой игры, 2 - завершение игры 
+            # Когда пользователь или бот добивается победы или ничьей, появляются 2 кнопки, с вопросом продолжить или завершить игру
+            # В случае, если пользователь ответил "продолжить игру", callback_data= Yes, и она передается сюда 
+            # В случае, если пользователь решил закончить игру нажав на соответствующую кнопку, то передастся ответ No
+            # В зависимости от ответа (паттерна) END_ROUTES запустит определенную функцию. 
             END_ROUTES: [
                 CallbackQueryHandler(start_new_game, pattern="^" + "Yes" + "$"),
                 CallbackQueryHandler(end, pattern="^" + "No" + "$"),
             ],
         },
+        
+        # В случае, если пользователь нажмет на поле, место ответа на вопрос о продолжении игры - запустится игра. 
         fallbacks=[CommandHandler("start", start_game)],
     )
+
+    # Благодаря тому, что в ConversationHandler уже описаны все команды, мы можем запускать только его. 
     app.add_handler(conv_handler)
+
+    # Запуск телеграмм бота, получения апдейтов и прочее. 
     app.run_polling()
+
+    # Сохранение статистики
     save_static(game_static)
