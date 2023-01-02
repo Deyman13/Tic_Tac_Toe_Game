@@ -692,6 +692,7 @@ if __name__ == '__main__':
 
     # Благодаря тому, что в ConversationHandler уже описаны все команды, мы можем запускать только его. 
     app.add_handler(conv_handler)
+    app.add_handler(CommandHandler("help", help_command))
 
     # Запуск телеграмм бота, получения апдейтов и прочее. 
     app.run_polling()
